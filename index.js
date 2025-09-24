@@ -21,6 +21,100 @@ app.get("/", (req, res) => {
 
 io.on("connection", (socket) => {
   console.log("a user connected");
+
+  // Evento de buscar todos os iPhones
+  socket.on('get-all-iphones', async () => {
+    try {
+      const iphones = await Iphone.findAll();
+      socket.emit('all-iphones', iphones);
+    } catch (error) {
+      console.error("Error fetching iPhones:", error);
+      socket.emit('error', 'Failed to fetch iPhones');
+    }
+  });
+
+  // Evento de criar um novo iPhone - MELHORADO
+  socket.on('create-iphone', async (data) => {
+    try {
+      const newIphone = await Iphone.create(data);
+      
+      // Notificar TODOS os clientes conectados (não apenas o que criou)
+      io.emit('iphone-created', newIphone);
+      
+      // Opcional: também enviar a lista atualizada para todos
+      const allIphones = await Iphone.findAll();
+      io.emit('all-iphones', allIphones);
+    } catch (error) {
+      console.error("Error creating iPhone:", error);
+      socket.emit('error', 'Failed to create iPhone');
+    }
+  });
+
+  socket.on('update-iphone', async (data) => {
+    try {
+      console.log("✏️ Atualizando iPhone:", data.id, data);
+      const { id, ...updateData } = data;
+      
+      // Verificar se o iPhone existe
+      const iphone = await Iphone.findByPk(id);
+      if (!iphone) {
+        socket.emit('error', 'iPhone not found');
+        return;
+      }
+      
+      // Atualizar o iPhone
+      await iphone.update(updateData);
+      const updatedIphone = await Iphone.findByPk(id);
+      
+      // Notificar TODOS os clientes conectados
+      io.emit('iphone-updated', updatedIphone);
+      console.log("📢 iPhone atualizado notificado para todos os clientes:", id);
+      
+      // Enviar lista atualizada para todos
+      const allIphones = await Iphone.findAll({
+        order: [['id', 'ASC']]
+      });
+      io.emit('all-iphones', allIphones);
+      
+    } catch (error) {
+      console.error("❌ Erro ao atualizar iPhone:", error);
+      socket.emit('error', 'Failed to update iPhone');
+    }
+  });
+
+  socket.on('delete-iphone', async (id) => {
+    try {
+      console.log("🗑️ Deletando iPhone:", id);
+      
+      // Verificar se o iPhone existe
+      const iphone = await Iphone.findByPk(id);
+      if (!iphone) {
+        socket.emit('error', 'iPhone not found');
+        return;
+      }
+      
+      // Deletar o iPhone
+      await iphone.destroy();
+      
+      // Notificar TODOS os clientes conectados
+      io.emit('iphone-deleted', id);
+      console.log("📢 iPhone deletado notificado para todos os clientes:", id);
+      
+      // Enviar lista atualizada para todos
+      const allIphones = await Iphone.findAll({
+        order: [['id', 'ASC']]
+      });
+      io.emit('all-iphones', allIphones);
+      
+    } catch (error) {
+      console.error("❌ Erro ao deletar iPhone:", error);
+      socket.emit('error', 'Failed to delete iPhone');
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("user disconnected");
+  });
 });
 
 sequelize
