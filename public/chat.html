@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPhone Fly - Chat em Tempo Real</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chat-container {
+            width: 400px;
+            height: 600px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+
+        .online-count {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            display: inline-block;
+        }
+
+        .login-form {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+
+        .login-form h2 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        .login-form input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .login-form input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-form button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .login-form button:hover {
+            transform: translateY(-2px);
+        }
+
+        .login-form button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .messages-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+        }
+
+        .message.own {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            position: relative;
+        }
+
+        .message.own .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message.other .message-content {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .message.system .message-content {
+            background: #e9ecef;
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+            font-size: 0.9em;
+            border-radius: 12px;
+            margin: 0 auto;
+        }
+
+        .message.system {
+            justify-content: center;
+        }
+
+        .message-sender {
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-bottom: 4px;
+            opacity: 0.8;
+        }
+
+        .message-time {
+            font-size: 0.7em;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e1e5e9;
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 20px;
+            font-size: 1em;
+        }
+
+        .input-area input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-area button {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .input-area button:hover {
+            transform: scale(1.05);
+        }
+
+        .input-area button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            padding: 10px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>Chat da Comunidade iPhone Fly</h1>
+            <div class="online-count" id="onlineCount">👥 0 online</div>
+        </div>
+
+        <div id="status" class="status disconnected">Desconectado</div>
+
+        <!-- Formulário de login -->
+        <div id="loginForm" class="login-form">
+            <h2>Entre no chat!</h2>
+            <p style="color: #666; text-align: center; margin-bottom: 20px;">
+                Converse com outros usuários sobre iPhones, dicas e muito mais.
+            </p>
+            <input 
+                type="text" 
+                id="usernameInput" 
+                placeholder="Digite seu nome..."
+                maxlength="20"
+            >
+            <button id="joinButton" disabled>Iniciar Chat</button>
+        </div>
+
+        <!-- Interface do chat -->
+        <div id="chatInterface" style="display: none; flex: 1; display: flex; flex-direction: column;">
+            <div class="messages-area" id="messagesArea"></div>
+            <div class="input-area">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Digite sua mensagem..."
+                    maxlength="500"
+                >
+                <button id="sendButton" disabled>Enviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Elementos DOM
+        const statusEl = document.getElementById('status');
+        const onlineCountEl = document.getElementById('onlineCount');
+        const loginFormEl = document.getElementById('loginForm');
+        const chatInterfaceEl = document.getElementById('chatInterface');
+        const usernameInputEl = document.getElementById('usernameInput');
+        const joinButtonEl = document.getElementById('joinButton');
+        const messagesAreaEl = document.getElementById('messagesArea');
+        const messageInputEl = document.getElementById('messageInput');
+        const sendButtonEl = document.getElementById('sendButton');
+
+        // Variáveis globais
+        let socket;
+        let userName = '';
+        let isConnectedToChat = false;
+
+        // Inicializar Socket.IO
+        function initSocket() {
+            socket = io();
+
+            // Status da conexão
+            socket.on('connect', () => {
+                statusEl.textContent = 'Conectado';
+                statusEl.className = 'status connected';
+            });
+
+            socket.on('disconnect', () => {
+                statusEl.textContent = 'Desconectado';
+                statusEl.className = 'status disconnected';
+                isConnectedToChat = false;
+            });
+
+            // Eventos do chat
+            socket.on('message-history', (messages) => {
+                console.log('Histórico recebido:', messages);
+                messagesAreaEl.innerHTML = '';
+                messages.forEach(message => {
+                    displayMessage(message);
+                });
+                scrollToBottom();
+            });
+
+            socket.on('new-message', (message) => {
+                console.log('Nova mensagem:', message);
+                displayMessage(message);
+                scrollToBottom();
+            });
+
+            socket.on('users-online', (data) => {
+                console.log('Usuários online:', data);
+                onlineCountEl.textContent = `👥 ${data.count} online`;
+            });
+
+            socket.on('error', (error) => {
+                console.error('Erro:', error);
+                alert('Erro: ' + error.message);
+            });
+        }
+
+        // Exibir mensagem na tela
+        function displayMessage(message) {
+            const messageEl = document.createElement('div');
+            const isOwn = message.sender === userName;
+            const isSystem = message.messageType === 'system' || message.sender === 'Sistema';
+
+            messageEl.className = `message ${isOwn ? 'own' : isSystem ? 'system' : 'other'}`;
+
+            const contentEl = document.createElement('div');
+            contentEl.className = 'message-content';
+
+            let html = '';
+            
+            if (!isSystem && !isOwn) {
+                html += `<div class="message-sender">${message.sender}</div>`;
+            }
+            
+            html += `<div>${message.text}</div>`;
+            html += `<div class="message-time">${new Date(message.timestamp).toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit'
+            })}</div>`;
+
+            contentEl.innerHTML = html;
+            messageEl.appendChild(contentEl);
+            messagesAreaEl.appendChild(messageEl);
+        }
+
+        // Rolar para baixo
+        function scrollToBottom() {
+            messagesAreaEl.scrollTop = messagesAreaEl.scrollHeight;
+        }
+
+        // Entrar no chat
+        function joinChat() {
+            if (!userName.trim()) return;
+
+            socket.emit('join-chat', { userName });
+            isConnectedToChat = true;
+
+            // Ocultar formulário e mostrar chat
+            loginFormEl.style.display = 'none';
+            chatInterfaceEl.style.display = 'flex';
+        }
+
+        // Enviar mensagem
+        function sendMessage() {
+            const text = messageInputEl.value.trim();
+            if (!text || !isConnectedToChat) return;
+
+            socket.emit('send-message', {
+                text,
+                sender: userName
+            });
+
+            messageInputEl.value = '';
+        }
+
+        // Event listeners
+        usernameInputEl.addEventListener('input', (e) => {
+            userName = e.target.value.trim();
+            joinButtonEl.disabled = !userName;
+        });
+
+        usernameInputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && userName) {
+                joinChat();
+            }
+        });
+
+        joinButtonEl.addEventListener('click', joinChat);
+
+        messageInputEl.addEventListener('input', (e) => {
+            sendButtonEl.disabled = !e.target.value.trim();
+        });
+
+        messageInputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                sendMessage();
+            }
+        });
+
+        sendButtonEl.addEventListener('click', sendMessage);
+
+        // Inicializar
+        initSocket();
+    </script>
+</body>
+</html>
